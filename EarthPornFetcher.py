@@ -1,8 +1,9 @@
 # EarthPornFetcher - Tool to fetch new images from /r/EarthPorn to be used as Wallpapers
-import os, re, praw, urllib, imghdr, glob
+import os, re, praw, urllib, imghdr, glob, httplib
 from PIL import Image, ImageChops, ImageOps
+from urlparse import urlparse
 
-LIMIT = 1000
+LIMIT = 2500
 REQUIRED_WIDTH = 5120
 REQUIRED_HEIGHT = 1440 
 RES_REGEXP = re.compile('(\d+)\s*[x|X]*\s*(\d+)')
@@ -43,13 +44,26 @@ def main():
     if glob.glob(target_file + '*'):
       continue
     
-    # Download image
+    # Process image
     imageurl = entry.url
     
-    if "i.imgur.com" not in imageurl: 
+    if "imgur.com" in imageurl and "i.imgur.com" not in imageurl:
       imageurl = imageurl.replace('imgur.com', 'i.imgur.com') + ".jpg" #replace imgur link
     
-    urllib.urlretrieve(imageurl,  target_file)
+    # Don't process non successful requests
+    imageurl_parsed = urlparse(imageurl)
+    print imageurl_parsed.netloc, imageurl_parsed.path
+    
+    status = get_status_code(imageurl_parsed.netloc, imageurl_parsed.path)
+    if (not status or status != 200):
+      continue
+    
+    # Download image
+    try:
+      urllib.urlretrieve(imageurl,  target_file)
+    except Exception,e:
+      continue
+    
     file_type = imghdr.what(target_file)
     
     # Skip if file is not a proper image
@@ -61,18 +75,9 @@ def main():
     os.rename(target_file, target_file_with_type)
     
     # Resize image
-    #new_width  = REQUIRED_WIDTH
-    #new_height = new_width * height / width
-    
-    #new_width  = REQUIRED_WIDTH
-    #new_height = new_width * height / width
-    
-    #img = Image.open(target_file_with_type)
-    #img = img.resize((new_width, new_height), Image.ANTIALIAS)
-    #img.save(target_file_with_type)
-    
     makeThumb(target_file_with_type, target_file_with_type, pad=False)
 
+# Source: https://stackoverflow.com/a/9103783/1800854
 def makeThumb(f_in, f_out, size=(REQUIRED_WIDTH, REQUIRED_HEIGHT), pad=False):
 
     image = Image.open(f_in)
@@ -92,5 +97,20 @@ def makeThumb(f_in, f_out, size=(REQUIRED_WIDTH, REQUIRED_HEIGHT), pad=False):
 
     thumb.save(f_out)
     
+
+# Source: https://stackoverflow.com/a/1140822/1800854
+def get_status_code(host, path="/"):
+  """ This function retreives the status code of a website by requesting
+      HEAD data from the host. This means that it only requests the headers.
+      If the host cannot be reached or something else goes wrong, it returns
+      None instead.
+  """
+  try:
+      conn = httplib.HTTPConnection(host)
+      conn.request("HEAD", path)
+      return conn.getresponse().status
+  except StandardError:
+      return None
+        
 if __name__ == "__main__":
   main()
